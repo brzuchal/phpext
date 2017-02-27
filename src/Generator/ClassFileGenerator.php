@@ -2,9 +2,9 @@
 namespace Brzuchal\Compiler\Generator;
 
 use Brzuchal\Compiler\Extension;
-use Brzuchal\Compiler\FilesystemUtil;
+use Brzuchal\Compiler\Generator\Statements\Method;
+use Brzuchal\Compiler\Util\StringUtil;
 use PhpParser\Node\Stmt\Class_;
-use PhpParser\Node\Stmt\ClassMethod;
 
 class ClassFileGenerator implements FileGenerator
 {
@@ -30,14 +30,9 @@ class ClassFileGenerator implements FileGenerator
             $this->class->name;
     }
 
-    public function getClassNameSymbol() : string
-    {
-        return \str_replace('\\', '', $this->getClassName());
-    }
-
     public function getRegisterFunction() : string
     {
-        return \sprintf("php_register_%s_definition", FilesystemUtil::createSnakeNameFromCamelCase($this->getClassName()));
+        return \sprintf("php_register_%s_definition", StringUtil::createSnakeNameFromCamelCase($this->getClassName()));
     }
 
     /**
@@ -47,7 +42,7 @@ class ClassFileGenerator implements FileGenerator
     public function generate() : array
     {
         $className = $this->getClassName();
-        $filePathname = $this->extension->getBuildDirectory() . DIRECTORY_SEPARATOR . FilesystemUtil::createSnakeNameFromCamelCase($className) . '.c';
+        $filePathname = $this->extension->getBuildDirectory() . DIRECTORY_SEPARATOR . 'class_' . StringUtil::createSnakeNameFromCamelCase($className) . '.c';
         if (!@\touch($filePathname)) {
             throw new \RuntimeException("Unable to create source file for class {$className}");
         }
@@ -58,52 +53,46 @@ class ClassFileGenerator implements FileGenerator
         return [$className => $cFile];
     }
 
-    private function getMethodEntries() : array
-    {
-        return array_map(function (ClassMethod $classMethod) : string {
-            return \sprintf(
-                "PHP_ME(%s, %s, %s, %s)",
-                $this->getClassNameSymbol(),
-                $classMethod->name,
-                "arginfo_{$this->getClassNameSymbol()}_{$classMethod->name}",
-                $classMethod->flags
-            );
-        }, $this->class->getMethods());
-    }
-
     private function generateRegisterFunction() : string
     {
         $className = $this->class->name;
         $namespaceName = \trim(\substr($this->getClassName(), 0, -\strlen($className)), '\\');
-        $classNameSymbol = $this->getClassNameSymbol();
-        $methodEntries = \implode(PHP_EOL, $this->getMethodEntries());
-//        dump($className, $namespaceName, $classNameSymbol, $methodEntries);
+        $classNameSnake = StringUtil::createSnakeNameFromCamelCase($this->getClassName());
+
+        $methodArgInfo = '';
+        $methodEntries = '';
+        $methodDeclarations = '';
+        foreach ($this->class->getMethods() as $classMethod) {
+            $method = new Method($className, $classMethod);
+            $methodArgInfo .= (string)$method->getArgInfo() . PHP_EOL;
+            $methodEntries .= "\t\t" . (string)$method->getMethodEntry() . PHP_EOL;
+            $methodDeclarations .= (string)$method->getMethodDeclaration() . PHP_EOL;
+        }
+        // just for pretty print
+        $methodArgInfo = rtrim($methodArgInfo, PHP_EOL);
+        $methodEntries = rtrim($methodEntries, PHP_EOL);
+        $methodDeclarations = rtrim($methodDeclarations, PHP_EOL);
         $template = <<<EOF
 #include "php.h"
 
-zend_class_entry *{$classNameSymbol}_definition_ce;
+zend_class_entry *{$classNameSnake}_definition_ce;
 
-/* {{{ proto void {$classNameSymbol}::__construct(array \$definitions)
-   Create the {$classNameSymbol} object */
-//ZEND_METHOD({$classNameSymbol}, __construct)
-//{
-//}
-/* }}} */
+{$methodArgInfo}
 
+{$methodDeclarations}
 
 void {$this->getRegisterFunction()}()
 {
     zend_class_entry ce;
     zend_function_entry methods[] = {
-        {$methodEntries}        
+{$methodEntries}        
         PHP_FE_END
     };
-    INIT_NS_CLASS_ENTRY(ce, "{$namespaceName}", "{$classNameSymbol}", methods);
-    {$classNameSymbol}_definition_ce = zend_register_internal_class(&ce);
-//    zend_declare_property_null({$classNameSymbol}_definition_ce, "definitions", sizeof("definitions")-1, ZEND_ACC_PROTECTED);
+    INIT_NS_CLASS_ENTRY(ce, "{$namespaceName}", "{$className}", methods);
+    {$classNameSnake}_definition_ce = zend_register_internal_class(&ce);
 }
 EOF;
-dump($template);
+//    zend_declare_property_null({$classNameSnake}_definition_ce, "definitions", sizeof("definitions")-1, ZEND_ACC_PROTECTED);
         return $template;
     }
 }
