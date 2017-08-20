@@ -36,6 +36,7 @@ class Compiler
         $extensionGenerator = new ExtensionFileGenerator($extension);
 
         foreach ($extension->getSources() as $fileInfo) {
+            echo "\033[0;32mProcessing file: \033[0;36m{$fileInfo->getPathname()}...\033[0m\n";
             $stmts = $this->parseFile($fileInfo);
             foreach ($this->nodeFinder->findNamespaces(...$stmts) as $namespace) {
                 /** @var Class_[] $classes */

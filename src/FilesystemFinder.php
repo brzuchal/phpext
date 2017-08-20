@@ -22,18 +22,19 @@ class FilesystemFinder implements \IteratorAggregate
      * @return \SplFileInfo[]|\Traversable
      */
     public function getIterator() : \Traversable
-    {
+    {//dump($this->directory);
         $recursiveDirectoryIterator = new \RecursiveDirectoryIterator($this->directory);
         $filterIterator = new \RecursiveCallbackFilterIterator($recursiveDirectoryIterator, function (\SplFileInfo $fileInfo) : bool {
+//            dump($fileInfo);
             return $this->filterCallback($fileInfo);
         });
-
+dump(iterator_to_array($filterIterator));
         return $filterIterator;
     }
 
     protected function filterCallback(\SplFileInfo $fileInfo) : bool
-    {
-        if ($fileInfo->isDir() && \in_array($fileInfo->getPath(), ['.', '..'])) {
+    {dump($fileInfo);
+        if (\in_array($fileInfo->getPath(), ['.', '..'])) {
             return false;
         }
         if (null === $this->extensions) {
